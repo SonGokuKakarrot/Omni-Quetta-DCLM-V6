@@ -1,0 +1,42 @@
+{
+  "manifest_version": 2,
+  "name": "Nocturnal Omni Mic Maximizer",
+  "version": "2.1.0",
+  "description": "Boosts microphone input inside Discord Web with page-context WebRTC hook, DSP chain, and aggressive loudness controls.",
+  "permissions": [
+    "storage",
+    "https://discord.com/*",
+    "https://*.discord.com/*"
+  ],
+  "background": {
+    "scripts": ["background.js"]
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://discord.com/*",
+        "https://*.discord.com/*"
+      ],
+      "js": ["content/loader.js", "content/service.js"],
+      "run_at": "document_start",
+      "all_frames": true
+    }
+  ],
+  "web_accessible_resources": [
+    "core/injector.js"
+  ],
+  "browser_action": {
+    "default_title": "Mic Maximizer",
+    "default_popup": "popup/popup.html"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "discord-vc-mic-maximizer@example.com",
+      "strict_min_version": "142.0",
+      "data_collection_permissions": {
+        "required": ["none"],
+        "optional": []
+      }
+    }
+  }
+}
