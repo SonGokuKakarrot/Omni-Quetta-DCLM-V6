@@ -27,7 +27,8 @@
     pipelines: new Set(),
     trackMap: new WeakMap(),
     processedTracks: new WeakSet(),
-    processedMeta: new WeakMap()
+    processedMeta: new WeakMap(),
+    senderWatchTracks: new WeakSet()
   };
 
   const clamp = (v, min, max) => Math.min(max, Math.max(min, Number.isFinite(Number(v)) ? Number(v) : min));
@@ -189,31 +190,56 @@
     return new MediaStream(originalStream.getTracks().map((track) => track === rawTrack ? processedTrack : track));
   }
 
-  function cloneForSender(track) {
-    if (!track || track.readyState === "ended" || typeof track.clone !== "function") return track;
+  function liveAudioTrack(stream) {
+    if (!stream || typeof stream.getAudioTracks !== "function") return null;
+    return stream.getAudioTracks().find((track) => track.readyState !== "ended") || null;
+  }
+
+  function rebuildProcessedTrack(track) {
+    const meta = state.processedMeta.get(track);
+    const sourceTrack = liveAudioTrack(meta?.source);
+    if (!sourceTrack) return track;
+
     try {
-      const clone = track.clone();
-      state.processedTracks.add(clone);
-      const meta = state.processedMeta.get(track);
-      if (meta) state.processedMeta.set(clone, meta);
-      track.addEventListener("ended", () => {
-        try { clone.stop(); } catch (_) {}
-      }, { once: true });
-      return clone;
+      const rebuiltStream = build(new MediaStream([sourceTrack]), state.config);
+      const rebuiltTrack = liveAudioTrack(rebuiltStream);
+      return rebuiltTrack || track;
     } catch (_) {
       return track;
     }
   }
 
+  function cloneForSender(track) {
+    const liveTrack = track?.readyState === "ended" ? rebuildProcessedTrack(track) : track;
+    if (!liveTrack || liveTrack.readyState === "ended" || typeof liveTrack.clone !== "function") return liveTrack;
+
+    try {
+      const clone = liveTrack.clone();
+      state.processedTracks.add(clone);
+      const meta = state.processedMeta.get(liveTrack);
+      if (meta) state.processedMeta.set(clone, meta);
+      return clone;
+    } catch (_) {
+      return liveTrack;
+    }
+  }
+
   function processAudioTrack(track, forSender = false) {
     if (!track || track.kind !== "audio") return track;
-    if (state.processedTracks.has(track)) return forSender ? cloneForSender(track) : track;
+    if (state.processedTracks.has(track)) {
+      const nextTrack = track.readyState === "ended" ? rebuildProcessedTrack(track) : track;
+      return forSender ? cloneForSender(nextTrack) : nextTrack;
+    }
 
     const existing = state.trackMap.get(track);
-    if (existing && existing.readyState !== "ended") return forSender ? cloneForSender(existing) : existing;
+    if (existing) {
+      const nextTrack = existing.readyState === "ended" ? rebuildProcessedTrack(existing) : existing;
+      if (nextTrack && nextTrack !== existing && nextTrack.readyState !== "ended") state.trackMap.set(track, nextTrack);
+      if (nextTrack && nextTrack.readyState !== "ended") return forSender ? cloneForSender(nextTrack) : nextTrack;
+    }
 
     const processedStream = build(new MediaStream([track]), state.config);
-    const processedTrack = processedStream.getAudioTracks()[0] || track;
+    const processedTrack = liveAudioTrack(processedStream) || track;
     if (processedTrack !== track) {
       state.processedTracks.add(processedTrack);
       state.trackMap.set(track, processedTrack);
@@ -222,6 +248,22 @@
       }, { once: true });
     }
     return forSender ? cloneForSender(processedTrack) : processedTrack;
+  }
+
+  function watchSenderTrack(sender, track) {
+    if (!sender || !track || !state.processedTracks.has(track) || state.senderWatchTracks.has(track)) return;
+    state.senderWatchTracks.add(track);
+    track.addEventListener("ended", () => {
+      setTimeout(() => {
+        try {
+          const replacement = cloneForSender(track);
+          if (replacement && replacement !== track && replacement.readyState !== "ended") {
+            sender.replaceTrack(replacement).catch(() => {});
+            watchSenderTrack(sender, replacement);
+          }
+        } catch (_) {}
+      }, 0);
+    }, { once: true });
   }
 
   function patchPeerConnectionPaths() {
@@ -235,7 +277,9 @@
             const patchedStreams = streams.length
               ? streams.map((stream) => processedStreamFor(stream, track, processedTrack))
               : [new MediaStream([processedTrack])];
-            return originalAddTrack.call(this, processedTrack, ...patchedStreams);
+            const sender = originalAddTrack.call(this, processedTrack, ...patchedStreams);
+            if (typeof sender?.replaceTrack === "function") watchSenderTrack(sender, processedTrack);
+            return sender;
           }
           return originalAddTrack.call(this, track, ...streams);
         };
@@ -249,7 +293,9 @@
             const patchedInit = init?.streams
               ? { ...init, streams: init.streams.map((stream) => processedStreamFor(stream, trackOrKind, processedTrack)) }
               : init;
-            return originalAddTransceiver.call(this, processedTrack, patchedInit);
+            const transceiver = originalAddTransceiver.call(this, processedTrack, patchedInit);
+            if (typeof transceiver?.sender?.replaceTrack === "function") watchSenderTrack(transceiver.sender, processedTrack);
+            return transceiver;
           }
           return originalAddTransceiver.call(this, trackOrKind, init);
         };
@@ -264,7 +310,11 @@
       if (typeof originalReplaceTrack === "function") {
         Sender.prototype.replaceTrack = function(track) {
           const nextTrack = cfg().enabled && track?.kind === "audio" ? processAudioTrack(track, true) : track;
-          return originalReplaceTrack.call(this, nextTrack);
+          const result = originalReplaceTrack.call(this, nextTrack);
+          if (nextTrack?.kind === "audio") {
+            Promise.resolve(result).then(() => watchSenderTrack(this, nextTrack)).catch(() => {});
+          }
+          return result;
         };
       }
       Sender.prototype.__micMaxSenderPatched = true;
