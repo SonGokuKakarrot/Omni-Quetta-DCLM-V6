@@ -1,6 +1,51 @@
 const EXT = globalThis.browser ?? globalThis.chrome;
 const HAS_PROMISE_API = typeof globalThis.browser !== "undefined" && EXT === globalThis.browser;
 
+const DEFAULTS = {
+  enabled: true,
+  gainDb: 60,
+  loudness: 10.0,
+  maxBoost: 2000,
+  drive: 1.0,
+  thresholdDb: -50,
+  ratio: 20,
+  limiterDb: -0.1,
+  presenceDb: 15,
+  lowShelfDb: 12,
+  highShelfDb: 10
+};
+
+const PRESETS = {
+  royal: {
+    enabled: true,
+    gainDb: 24,
+    loudness: 4,
+    maxBoost: 2000,
+    drive: 0.28,
+    thresholdDb: -38,
+    ratio: 12,
+    limiterDb: -2,
+    presenceDb: 8,
+    lowShelfDb: 4,
+    highShelfDb: 6
+  },
+  lord: {
+    enabled: true,
+    gainDb: 60,
+    loudness: 10,
+    maxBoost: 2000,
+    drive: 1,
+    thresholdDb: -50,
+    ratio: 20,
+    limiterDb: -0.1,
+    presenceDb: 15,
+    lowShelfDb: 12,
+    highShelfDb: 10
+  }
+};
+
+const ids = Object.keys(DEFAULTS);
+
 function storageGet(key) {
   if (HAS_PROMISE_API) return EXT.storage.local.get(key);
   return new Promise((resolve) => {
@@ -9,7 +54,7 @@ function storageGet(key) {
         if (EXT.runtime?.lastError) resolve({});
         else resolve(res || {});
       });
-    } catch {
+    } catch (_) {
       resolve({});
     }
   });
@@ -20,7 +65,7 @@ function storageSet(value) {
   return new Promise((resolve) => {
     try {
       EXT.storage.local.set(value, () => resolve(!EXT.runtime?.lastError));
-    } catch {
+    } catch (_) {
       resolve(false);
     }
   });
@@ -34,60 +79,47 @@ function sendMessage(message) {
         if (EXT.runtime?.lastError) resolve(null);
         else resolve(res || null);
       });
-    } catch {
+    } catch (_) {
       resolve(null);
     }
   });
 }
 
-const DEFAULTS = {
-  enabled: true,
-  gainDb: 18,
-  loudness: 2.5,
-  maxBoost: 50,
-  drive: 0.18,
-  thresholdDb: -30,
-  ratio: 10,
-  limiterDb: -3,
-  presenceDb: 5,
-  lowShelfDb: 2,
-  highShelfDb: 4
-};
-
-const PRESETS = {
-  stable: { enabled: true, gainDb: 12, loudness: 1.8, maxBoost: 50, drive: 0.08, thresholdDb: -30, ratio: 7, limiterDb: -4, presenceDb: 4, lowShelfDb: 1, highShelfDb: 3 },
-  extreme: { enabled: true, gainDb: 24, loudness: 50, maxBoost: 50, drive: 0.12, thresholdDb: -34, ratio: 12, limiterDb: -6, presenceDb: 6, lowShelfDb: 2, highShelfDb: 5 }
-};
-
-const ids = Object.keys(DEFAULTS);
-
-function presetMatches(config, preset) {
-  return Object.entries(preset).every(([key, value]) => config[key] === value);
-}
-
-function activePreset(config) {
-  if (presetMatches(config, PRESETS.stable)) return "stable";
-  if (presetMatches(config, PRESETS.extreme)) return "extreme";
-  return "custom";
-}
-
-function updatePresetState(config) {
-  const active = activePreset(config);
-  const stableButton = document.getElementById("stablePreset");
-  const extremeButton = document.getElementById("extremePreset");
-  document.body.dataset.theme = active;
-  stableButton?.classList.toggle("active", active === "stable");
-  stableButton?.setAttribute("aria-pressed", String(active === "stable"));
-  extremeButton?.classList.toggle("active", active === "extreme");
-  extremeButton?.setAttribute("aria-pressed", String(active === "extreme"));
+function numberText(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return String(value);
+  return Math.abs(n) < 10 && !Number.isInteger(n) ? n.toFixed(1) : String(n);
 }
 
 function updateLabels() {
   ids.forEach((id) => {
     const el = document.getElementById(id);
     const label = document.getElementById(`${id}Val`);
-    if (label && el.type !== "checkbox") label.textContent = el.value;
+    if (label && el?.type !== "checkbox") label.textContent = numberText(el.value);
   });
+}
+
+function presetMatches(config, preset) {
+  return Object.entries(preset).every(([key, value]) => Number(config[key]) === Number(value) || config[key] === value);
+}
+
+function activePreset(config) {
+  if (presetMatches(config, PRESETS.royal)) return "royal";
+  if (presetMatches(config, PRESETS.lord)) return "lord";
+  return "custom";
+}
+
+function updatePresetState(config) {
+  const active = activePreset(config);
+  document.body.dataset.theme = active;
+
+  const royalButton = document.getElementById("royalPreset");
+  const lordButton = document.getElementById("lordPreset");
+
+  royalButton?.classList.toggle("active", active === "royal");
+  royalButton?.setAttribute("aria-pressed", String(active === "royal"));
+  lordButton?.classList.toggle("active", active === "lord");
+  lordButton?.setAttribute("aria-pressed", String(active === "lord"));
 }
 
 function applyToControls(config) {
@@ -101,56 +133,57 @@ function applyToControls(config) {
   updatePresetState(config);
 }
 
+async function readConfig() {
+  const stored = await storageGet("micMaximizerConfig");
+  return { ...DEFAULTS, ...(stored.micMaximizerConfig || {}) };
+}
+
 async function saveConfig(config) {
-  await storageSet({ micMaximizerConfig: { ...DEFAULTS, ...config } });
-  applyToControls({ ...DEFAULTS, ...config });
+  const merged = { ...DEFAULTS, ...config };
+  await storageSet({ micMaximizerConfig: merged });
+  applyToControls(merged);
+}
+
+async function onControlInput(id, el) {
+  const merged = await readConfig();
+  merged[id] = el.type === "checkbox" ? el.checked : Number(el.value);
+  await saveConfig(merged);
 }
 
 async function init() {
-  const stored = await storageGet("micMaximizerConfig");
-  const config = { ...DEFAULTS, ...(stored.micMaximizerConfig || {}) };
-
-  applyToControls(config);
+  applyToControls(await readConfig());
 
   ids.forEach((id) => {
     const el = document.getElementById(id);
-
-    el.addEventListener("input", async () => {
-      const next = await storageGet("micMaximizerConfig");
-      const merged = { ...DEFAULTS, ...(next.micMaximizerConfig || {}) };
-      merged[id] = el.type === "checkbox" ? el.checked : Number(el.value);
-      await storageSet({ micMaximizerConfig: merged });
-      updateLabels();
-      updatePresetState(merged);
-    });
+    if (!el) return;
+    el.addEventListener("input", () => onControlInput(id, el));
   });
 
-  document.getElementById("stablePreset")?.addEventListener("click", () => saveConfig(PRESETS.stable));
-  document.getElementById("extremePreset")?.addEventListener("click", () => saveConfig(PRESETS.extreme));
-  updateLabels();
+  document.getElementById("royalPreset")?.addEventListener("click", () => saveConfig(PRESETS.royal));
+  document.getElementById("lordPreset")?.addEventListener("click", () => saveConfig(PRESETS.lord));
 }
-
-init();
-
 
 async function refreshHookStatus() {
   const el = document.getElementById("hookStatus");
   if (!el) return;
+
   try {
     const status = await sendMessage({ type: "MICMAX_STATUS_REQUEST" });
-    const ageMs = status?.lastHeartbeat ? (Date.now() - status.lastHeartbeat) : Infinity;
+    const ageMs = status?.lastHeartbeat ? Date.now() - status.lastHeartbeat : Infinity;
+
     if (status?.ok && ageMs < 12000) {
-      el.textContent = "Hook status: ACTIVE";
+      el.textContent = "Hook status: ACTIVE on Discord";
       el.className = "status ok";
     } else {
-      el.textContent = "Hook status: NOT DETECTED (open/reload Discord tab)";
+      el.textContent = "Hook status: waiting — open or reload Discord Web";
       el.className = "status warn";
     }
-  } catch {
+  } catch (_) {
     el.textContent = "Hook status: unavailable";
     el.className = "status warn";
   }
 }
 
+init();
 setInterval(refreshHookStatus, 3000);
 refreshHookStatus();
