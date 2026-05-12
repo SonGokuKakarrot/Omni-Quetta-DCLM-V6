@@ -1,36 +1,52 @@
 (() => {
   const EXT = globalThis.browser ?? globalThis.chrome;
+  if (!EXT?.runtime?.getURL) return;
+
   const injectorUrl = EXT.runtime.getURL("core/injector.js");
+
+  function sendHeartbeat() {
+    try {
+      const result = EXT.runtime.sendMessage({ type: "MICMAX_HEARTBEAT" });
+      if (result?.catch) result.catch(() => {});
+    } catch (_) {}
+  }
 
   function inject() {
     if (window.__micMaxLoaderBusy) return;
     window.__micMaxLoaderBusy = true;
 
-    const alreadyReady = document.documentElement?.dataset?.micMaxLoaderInjected === "1";
-    if (alreadyReady && window.__micMaxInjectorReady) {
+    const alreadyInjected = document.documentElement?.dataset?.micMaxLoaderInjected === "1";
+    if (alreadyInjected && window.__micMaxInjectorReady) {
       window.__micMaxLoaderBusy = false;
+      sendHeartbeat();
       return;
     }
 
-    const s = document.createElement("script");
-    s.src = injectorUrl;
-    s.async = false;
-    s.onload = () => {
+    const script = document.createElement("script");
+    script.src = injectorUrl;
+    script.async = false;
+    script.dataset.omniDcLord = "injector";
+    script.onload = () => {
       document.documentElement.dataset.micMaxLoaderInjected = "1";
       window.__micMaxLoaderBusy = false;
+      sendHeartbeat();
+      script.remove();
     };
-    s.onerror = () => { window.__micMaxLoaderBusy = false; };
-    (document.head || document.documentElement).appendChild(s);
+    script.onerror = () => {
+      window.__micMaxLoaderBusy = false;
+    };
+
+    (document.head || document.documentElement).appendChild(script);
   }
 
   inject();
 
-  const mo = new MutationObserver(() => {
+  const observer = new MutationObserver(() => {
     if (!window.__micMaxInjectorReady) inject();
   });
-  mo.observe(document.documentElement, { childList: true, subtree: true });
+  observer.observe(document.documentElement, { childList: true, subtree: true });
 
   setInterval(() => {
     if (!window.__micMaxInjectorReady) inject();
-  }, 3000);
+  }, 2500);
 })();
