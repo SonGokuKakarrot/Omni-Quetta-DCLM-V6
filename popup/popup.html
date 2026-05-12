@@ -1,38 +1,109 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Mic Maximizer</title>
-  <link rel="stylesheet" href="popup.css" />
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Omni DC Lord</title>
+  <link rel="stylesheet" href="popup.css">
 </head>
-<body data-theme="custom">
-  <main>
-    <h1>Mic Maximizer</h1>
-    <label class="enableToggle"><input id="enabled" type="checkbox" /> Enabled</label>
-    <p id="hookStatus" class="status">Hook status: checking...</p>
-    <section class="presets" aria-labelledby="presetTitle">
-      <div class="presetHeader">
-        <h2 id="presetTitle">Presets</h2>
-        <span>Click one to apply</span>
+<body>
+  <main class="panel">
+    <section class="hero">
+      <div>
+        <p class="eyebrow">Discord VC Maximizer</p>
+        <h1>Omni DC Lord</h1>
       </div>
-      <div class="presetBar">
-        <button id="stablePreset" type="button" aria-label="Apply Stable Clear preset">Stable Clear</button>
-        <button id="extremePreset" type="button" aria-label="Apply 50x Boost preset">50x Boost</button>
-      </div>
-      <p class="presetHelp">These are quick preset buttons, not required setup steps. When you click one, Stable Clear turns neon green or 50x Boost turns neon yellow while that preset is active.</p>
+      <label class="switch" title="Enable or bypass the mic chain">
+        <input id="enabled" type="checkbox">
+        <span class="slider"></span>
+      </label>
     </section>
-    <div class="field"><label for="gainDb">Gain (dB)</label><input id="gainDb" type="range" min="0" max="48" value="18" /><span id="gainDbVal"></span></div>
-    <div class="field"><label for="loudness">Loudness Drive</label><input id="loudness" type="range" min="0.5" max="50" step="0.1" value="2.5" /><span id="loudnessVal"></span></div>
-    <div class="field"><label for="maxBoost">Max Boost Ceiling</label><input id="maxBoost" type="range" min="1" max="50" step="1" value="50" /><span id="maxBoostVal"></span></div>
-    <div class="field"><label for="drive">Saturation Drive</label><input id="drive" type="range" min="0" max="0.9" step="0.01" value="0.18" /><span id="driveVal"></span></div>
-    <div class="field"><label for="thresholdDb">Comp Threshold (dB)</label><input id="thresholdDb" type="range" min="-55" max="-6" value="-30" /><span id="thresholdDbVal"></span></div>
-    <div class="field"><label for="ratio">Comp Ratio</label><input id="ratio" type="range" min="1" max="20" step="0.5" value="10" /><span id="ratioVal"></span></div>
-    <div class="field"><label for="limiterDb">Limiter Ceiling (dB)</label><input id="limiterDb" type="range" min="-12" max="-0.5" step="0.5" value="-3" /><span id="limiterDbVal"></span></div>
-    <div class="field"><label for="presenceDb">Presence EQ (dB)</label><input id="presenceDb" type="range" min="-12" max="12" value="5" /><span id="presenceDbVal"></span></div>
-    <div class="field"><label for="lowShelfDb">Bass EQ (dB)</label><input id="lowShelfDb" type="range" min="-15" max="15" value="2" /><span id="lowShelfDbVal"></span></div>
-    <div class="field"><label for="highShelfDb">Treble EQ (dB)</label><input id="highShelfDb" type="range" min="-15" max="15" value="4" /><span id="highShelfDbVal"></span></div>
-    <p class="note">Quetta-stable defaults update live. Use Loudness up to 50x carefully; lower Drive/Gain if voice cracks.</p>
+
+    <div id="hookStatus" class="status warn">Hook status: checking Discord tab...</div>
+
+    <section class="presets" aria-label="Sound presets">
+      <div class="sectionTitle">
+        <h2>Lord Modes</h2>
+        <span>tap to apply</span>
+      </div>
+      <div class="presetGrid">
+        <button id="royalPreset" type="button" class="preset royal">
+          <strong>Royal Clear</strong>
+          <small>clean loud VC</small>
+        </button>
+        <button id="lordPreset" type="button" class="preset lord">
+          <strong>Lord 2000x</strong>
+          <small>extreme dominance</small>
+        </button>
+      </div>
+      <p class="hint">If Discord crackles or clips, use Royal Clear or lower Gain, Loudness, and Drive.</p>
+    </section>
+
+    <section class="controls" aria-label="Live microphone controls">
+      <div class="field">
+        <label for="gainDb">Gain <em>dB</em></label>
+        <input id="gainDb" type="range" min="0" max="120" step="1">
+        <output id="gainDbVal"></output>
+      </div>
+
+      <div class="field">
+        <label for="loudness">Loudness</label>
+        <input id="loudness" type="range" min="0.5" max="2000" step="0.5">
+        <output id="loudnessVal"></output>
+      </div>
+
+      <div class="field">
+        <label for="maxBoost">Boost ceiling</label>
+        <input id="maxBoost" type="range" min="1" max="5000" step="1">
+        <output id="maxBoostVal"></output>
+      </div>
+
+      <div class="field">
+        <label for="drive">Saturation Drive</label>
+        <input id="drive" type="range" min="0" max="10" step="0.05">
+        <output id="driveVal"></output>
+      </div>
+
+      <div class="field">
+        <label for="thresholdDb">Compressor Threshold <em>dB</em></label>
+        <input id="thresholdDb" type="range" min="-100" max="0" step="1">
+        <output id="thresholdDbVal"></output>
+      </div>
+
+      <div class="field">
+        <label for="ratio">Compressor Ratio</label>
+        <input id="ratio" type="range" min="1" max="20" step="1">
+        <output id="ratioVal"></output>
+      </div>
+
+      <div class="field">
+        <label for="limiterDb">Limiter Ceiling <em>dB</em></label>
+        <input id="limiterDb" type="range" min="-24" max="0" step="0.1">
+        <output id="limiterDbVal"></output>
+      </div>
+
+      <div class="field">
+        <label for="presenceDb">Presence EQ <em>dB</em></label>
+        <input id="presenceDb" type="range" min="-60" max="60" step="1">
+        <output id="presenceDbVal"></output>
+      </div>
+
+      <div class="field">
+        <label for="lowShelfDb">Bass EQ <em>dB</em></label>
+        <input id="lowShelfDb" type="range" min="-60" max="60" step="1">
+        <output id="lowShelfDbVal"></output>
+      </div>
+
+      <div class="field">
+        <label for="highShelfDb">Treble EQ <em>dB</em></label>
+        <input id="highShelfDb" type="range" min="-60" max="60" step="1">
+        <output id="highShelfDbVal"></output>
+      </div>
+    </section>
+
+    <footer>
+      Quetta/Android note: install as an unpacked/signed extension, open Discord Web, then reload the tab before joining VC.
+    </footer>
   </main>
   <script src="popup.js"></script>
 </body>
